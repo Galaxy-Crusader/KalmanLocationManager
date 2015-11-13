@@ -24,16 +24,20 @@
 
 package com.villoren.android.kalmanlocationmanager.app;
 
+import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.location.LocationProvider;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Menu;
@@ -58,7 +62,15 @@ import static com.villoren.android.kalmanlocationmanager.lib.KalmanLocationManag
 
 public class MainActivity extends Activity {
 
+    private static final String[] INITIAL_PERMS={
+            Manifest.permission.ACCESS_FINE_LOCATION
+    };
+
     // Constant
+
+    private static final int INITIAL_REQUEST=1337;
+    private static final int LOCATION_REQUEST=INITIAL_REQUEST+3;
+
 
     /**
      * Request location updates with the highest possible frequency on gps.
@@ -77,6 +89,8 @@ public class MainActivity extends Activity {
      * Lets say we want 5 updates (estimates) per second = update each 200 millis.
      */
     private static final long FILTER_TIME = 200;
+
+
 
     // Context
     private KalmanLocationManager mKalmanLocationManager;
@@ -103,6 +117,7 @@ public class MainActivity extends Activity {
     // GoogleMaps own OnLocationChangedListener (not android's LocationListener)
     private LocationSource.OnLocationChangedListener mOnLocationChangedListener;
 
+    @TargetApi(Build.VERSION_CODES.M)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -188,6 +203,10 @@ public class MainActivity extends Activity {
 
         // Init altitude textview
         tvAlt.setText(getString(R.string.activity_main_fmt_alt, "-"));
+
+        if (!canAccessLocation()) {
+            requestPermissions(INITIAL_PERMS, INITIAL_REQUEST);
+        }
     }
 
     @Override
@@ -389,4 +408,13 @@ public class MainActivity extends Activity {
             mOnLocationChangedListener = null;
         }
     };
+
+    private boolean canAccessLocation() {
+        return(hasPermission(Manifest.permission.ACCESS_FINE_LOCATION));
+    }
+
+    @TargetApi(Build.VERSION_CODES.M)
+    private boolean hasPermission(String perm) {
+        return(PackageManager.PERMISSION_GRANTED==checkSelfPermission(perm));
+    }
 }

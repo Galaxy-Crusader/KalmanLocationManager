@@ -42,7 +42,7 @@ import static com.villoren.android.kalmanlocationmanager.lib.KalmanLocationManag
  * Created by Rena on 28/09/2014.
  */
 class LooperThread extends Thread {
-    
+
     // Static constant
     private static final int THREAD_PRIORITY = 5;
 
