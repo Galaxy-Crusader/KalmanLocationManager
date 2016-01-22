@@ -95,6 +95,7 @@ public class MainActivity extends Activity {
     // Context
     private KalmanLocationManager mKalmanLocationManager;
     private SharedPreferences mPreferences;
+    private UseProvider currentProvider;
 
     // UI elements
     private MapView mMapView;
@@ -126,6 +127,7 @@ public class MainActivity extends Activity {
         // Context
         mKalmanLocationManager = new KalmanLocationManager(this);
         mPreferences = getPreferences(Context.MODE_PRIVATE);
+        currentProvider = UseProvider.GPS;
 
         // Init maps
         int result = MapsInitializer.initialize(this);
@@ -137,8 +139,6 @@ public class MainActivity extends Activity {
         }
 
         // UI elements
-
-
         mMapView = (MapView) findViewById(R.id.mapView);
         mMapView.onCreate(savedInstanceState);
 
@@ -236,6 +236,21 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         mMapView.onResume();
+        if(currentProvider == UseProvider.GPS)
+        {
+            mLocationListener.onProviderEnabled("gps");
+            mLocationListener.onProviderDisabled("network");
+        }
+        if(currentProvider == UseProvider.NET)
+        {
+            mLocationListener.onProviderDisabled("gps");
+            mLocationListener.onProviderEnabled("network");
+        }
+        if(currentProvider == UseProvider.GPS_AND_NET)
+        {
+            mLocationListener.onProviderEnabled("gps");
+            mLocationListener.onProviderEnabled("network");
+        }
 
         // Request location updates with the highest possible frequency on gps.
         // Typically, this means one update per second for gps.
@@ -247,7 +262,7 @@ public class MainActivity extends Activity {
         // Lets say we want 5 updates per second = update each 200 millis.
 
         mKalmanLocationManager.requestLocationUpdates(
-                UseProvider.GPS_AND_NET, FILTER_TIME, GPS_TIME, NET_TIME, mLocationListener, true);
+                currentProvider, FILTER_TIME, GPS_TIME, NET_TIME, mLocationListener, true);
     }
 
     @Override
