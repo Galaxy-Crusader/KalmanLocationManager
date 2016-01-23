@@ -69,7 +69,9 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.List;
 import java.util.Timer;
 
 import static com.villoren.android.kalmanlocationmanager.lib.KalmanLocationManager.UseProvider;
@@ -91,7 +93,7 @@ public class MainActivity extends Activity {
      * Request location updates with the highest possible frequency on gps.
      * Typically, this means one update per second for gps.
      */
-    private static long GPS_TIME = 1;
+    private static long GPS_TIME = 1000;
 
     /**
      * For the network provider, which gives locations with less accuracy (less reliable),
@@ -104,10 +106,10 @@ public class MainActivity extends Activity {
      * Lets say we want 5 updates (estimates) per second = update each 200 millis.
      *
      * New: removed final to reduce overshooting by adapting filter_time to other intervalls:
-     * gps and net.
+     * gps and net TODO
      * Reason: Sometimes the updates come really seldom
      */
-    private static long FILTER_TIME = 200;
+    private static long FILTER_TIME = 1000;
     long starttime;
 
 
@@ -132,11 +134,11 @@ public class MainActivity extends Activity {
     private GoogleMap mGoogleMap;
     private Circle mGpsCircle;
     private Circle mNetCircle;
-    private Polyline mGpsPolyLine;
+    private ArrayList<Polyline> mGpsPolyLines;
     private PolylineOptions mGpsPolyLineOptions;
-    private Polyline mNetPolyLine;
+    private ArrayList<Polyline> mNetPolyLines;
     private PolylineOptions mNetPolyLineOptions;
-    private Polyline mKalmanPolyLine;
+    private ArrayList<Polyline> mKalmanPolyLines;
     private PolylineOptions mKalmanPolyLineOptions;
 
     //CSV writers
@@ -219,44 +221,29 @@ public class MainActivity extends Activity {
 
         mNetCircle = mGoogleMap.addCircle(netCircleOptions);
 
-        mGpsPolyLineOptions = new PolylineOptions()
-                .width(5)
-                .color(Color.RED);
-        mGpsPolyLine = mGoogleMap.addPolyline(mGpsPolyLineOptions);
+        mGpsPolyLines = new ArrayList<>();
+        mNetPolyLines = new ArrayList<>();
+        mKalmanPolyLines = new ArrayList<>();
 
-        mNetPolyLineOptions = new PolylineOptions()
-                .width(5)
-                .color(Color.GREEN);
-        mNetPolyLine = mGoogleMap.addPolyline(mNetPolyLineOptions);
-
-        mKalmanPolyLineOptions = new PolylineOptions()
-                .width(5)
-                .color(Color.BLUE);
-        mKalmanPolyLine = mGoogleMap.addPolyline(mKalmanPolyLineOptions);
         requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 3);
 
-        // init loggers
-        mGpsWriter = initCSVLogger("KalmanLocationLog/GPSData.csv");
-        mNetWriter = initCSVLogger("KalmanLocationLog/NetData.csv");
-        mKalmanWriter = initCSVLogger("KalmanLocationLog/KalmanData.csv");
-
-        setLogging(true);
+        setLogging(false);
 
         // TextView animation
         final float fromAlpha = 1.0f, toAlpha = 0.5f;
 
         mGpsAnimation = new AlphaAnimation(fromAlpha, toAlpha);
-        mGpsAnimation.setDuration(GPS_TIME / 2);
+        mGpsAnimation.setDuration(300);
         mGpsAnimation.setFillAfter(true);
         tvGps.startAnimation(mGpsAnimation);
 
         mNetAnimation = new AlphaAnimation(fromAlpha, toAlpha);
-        mNetAnimation.setDuration(NET_TIME / 2);
+        mNetAnimation.setDuration(300);
         mNetAnimation.setFillAfter(true);
         tvNet.startAnimation(mNetAnimation);
 
         mKalAnimation = new AlphaAnimation(fromAlpha, toAlpha);
-        mKalAnimation.setDuration(FILTER_TIME / 2);
+        mKalAnimation.setDuration(300);
         mKalAnimation.setFillAfter(true);
         tvKal.startAnimation(mKalAnimation);
 
@@ -266,19 +253,35 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v)
             {
-                setLogging(false);
-                if (!logging)
+
+                if (logging)
                 {
+                    setLogging(false);
                     try
                     {
                         mGpsWriter.close();
                         mNetWriter.close();
                         mKalmanWriter.close();
+                        removeAllLines();
                         Log.d("Main", "Stopped Logging");
+                        Toast.makeText(
+                                MainActivity.this,
+                                "Stopped logging",
+                                Toast.LENGTH_SHORT)
+                                .show();
                     } catch (IOException e)
                     {
                         e.printStackTrace();
                     }
+                }else if(!logging)
+                {
+                    initAllLoggers();
+                    initLines();
+                    Toast.makeText(
+                            MainActivity.this,
+                            "Started logging",
+                            Toast.LENGTH_SHORT)
+                            .show();
                 }
             }
         });
@@ -289,6 +292,55 @@ public class MainActivity extends Activity {
         if (!canAccessLocation()) {
             requestPermissions(INITIAL_PERMS, INITIAL_REQUEST);
         }
+    }
+
+    void initLines()
+    {
+        mGpsPolyLineOptions = new PolylineOptions()
+                .width(5)
+                .color(Color.RED);
+        mGpsPolyLines.add(mGoogleMap.addPolyline(mGpsPolyLineOptions));
+
+        mNetPolyLineOptions = new PolylineOptions()
+                .width(5)
+                .color(Color.GREEN);
+        mNetPolyLines.add(mGoogleMap.addPolyline(mNetPolyLineOptions));
+
+        mKalmanPolyLineOptions = new PolylineOptions()
+                .width(5)
+                .color(Color.BLUE);
+        mKalmanPolyLines.add(mGoogleMap.addPolyline(mKalmanPolyLineOptions));
+    }
+
+    void removeAllLines()
+    {
+        for (Polyline l :
+                mGpsPolyLines)
+        {
+            l.remove();
+        }
+        mGpsPolyLineOptions = new PolylineOptions();
+        mGpsPolyLines.clear();
+        for (Polyline l :
+                mNetPolyLines)
+        {
+            l.remove();
+        }
+        mNetPolyLines.clear();
+        for (Polyline l :
+                mKalmanPolyLines)
+        {
+            l.remove();
+        }
+        mKalmanPolyLines.clear();
+    }
+
+    void initAllLoggers()
+    {
+        mGpsWriter = initCSVLogger("KalmanLocationLog/GPSData.csv");
+        mNetWriter = initCSVLogger("KalmanLocationLog/NetData.csv");
+        mKalmanWriter = initCSVLogger("KalmanLocationLog/KalmanData.csv");
+        setLogging(true);
     }
 
     private CSVWriter initCSVLogger(String filename)
@@ -325,7 +377,13 @@ public class MainActivity extends Activity {
             e.printStackTrace();
         }
         CSVWriter csWriter = new CSVWriter(writer);
-        String[] header = {"latitude", "longitude", "timestamp"};
+        String[] header = {
+                "Latitude",
+                "Longitude",
+                "Accuracy",
+                "Speed",
+                "Timestamp"
+        };
         csWriter.writeNext(header, false);
         return csWriter;
     }
@@ -409,6 +467,17 @@ public class MainActivity extends Activity {
         mPreferences.edit().putInt("zoom", sbZoom.getProgress()).apply();
     }
 
+    private String[] formatDataforCSV(Location location)
+    {
+        return new String[]{
+                String.valueOf(location.getLatitude()),
+                String.valueOf(location.getLongitude()),
+                String.valueOf(location.getAccuracy()),
+                String.valueOf(location.getSpeed()),
+                new SimpleDateFormat("HH:mm:ss:SS").format(Calendar.getInstance().getTime())
+        };
+    }
+
     /**
      * Listener used to get updates from KalmanLocationManager (the good old Android LocationListener).
      */
@@ -423,7 +492,7 @@ public class MainActivity extends Activity {
                 long interval = System.currentTimeMillis() - starttime;
                 //if(interval > FILTER_TIME)
                 //{
-                    FILTER_TIME = interval;
+                //    FILTER_TIME = interval;
                 //}
                 starttime = System.currentTimeMillis();
             }
@@ -441,14 +510,13 @@ public class MainActivity extends Activity {
                 tvGps.clearAnimation();
                 tvGps.startAnimation(mGpsAnimation);
 
-                mGpsPolyLineOptions.add(latLng);
-                mGpsPolyLine = mGoogleMap.addPolyline(mGpsPolyLineOptions);
 
-                //save to file
-                String timeStamp = new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime());
-                String[] data = {String.valueOf(latLng.latitude), String.valueOf(latLng.longitude),
-                        timeStamp};
-                mGpsWriter.writeNext(data, false);
+                if(logging)
+                {
+                    mGpsPolyLineOptions.add(latLng);
+                    mGpsPolyLines.add(mGoogleMap.addPolyline(mGpsPolyLineOptions));
+                    mGpsWriter.writeNext(formatDataforCSV(location), false);
+                }
             }
 
             // Network location
@@ -461,22 +529,25 @@ public class MainActivity extends Activity {
                 tvNet.clearAnimation();
                 tvNet.startAnimation(mNetAnimation);
 
-                mNetPolyLineOptions.add(latLng);
-                mNetPolyLine = mGoogleMap.addPolyline(mNetPolyLineOptions);
-                String timeStamp = new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime());
-                String[] data = {String.valueOf(latLng.latitude), String.valueOf(latLng.longitude),
-                        timeStamp};
-                mNetWriter.writeNext(data, false);
+
+                if(logging)
+                {
+                    mNetPolyLineOptions.add(latLng);
+                    mNetPolyLines.add(mGoogleMap.addPolyline(mNetPolyLineOptions));
+                    mNetWriter.writeNext(formatDataforCSV(location), false);
+                }
             }
 
             // If Kalman location and google maps activated the supplied mLocationSource
             if (location.getProvider().equals(KalmanLocationManager.KALMAN_PROVIDER)
                     && mOnLocationChangedListener != null) {
 
-                String timeStamp = new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime());
-                String[] data = {String.valueOf(latLng.latitude), String.valueOf(latLng.longitude),
-                        timeStamp};
-                mKalmanWriter.writeNext(data, false);
+                if(logging)
+                {
+                    mKalmanPolyLineOptions.add(latLng);
+                    mKalmanPolyLines.add(mGoogleMap.addPolyline(mKalmanPolyLineOptions));
+                    mKalmanWriter.writeNext(formatDataforCSV(location), false);
+                }
 
                 // Update blue "myLocation" dot
                 mOnLocationChangedListener.onLocationChanged(location);
@@ -489,9 +560,8 @@ public class MainActivity extends Activity {
                     .build();
 
                 CameraUpdate update = CameraUpdateFactory.newCameraPosition(position);
-                mGoogleMap.animateCamera(update, (int) FILTER_TIME, null);
-                mKalmanPolyLineOptions.add(latLng);
-                mKalmanPolyLine = mGoogleMap.addPolyline(mKalmanPolyLineOptions);
+                mGoogleMap.animateCamera(update, 200, null);
+
 
                 // Update altitude
                 String altitude = location.hasAltitude() ? String.format("%.1f", location.getAltitude()) : "-";
@@ -603,14 +673,11 @@ public class MainActivity extends Activity {
 
     public void setLogging(boolean logging)
     {
+        if(logging)
+            logStopButton.setText("Stop Log");
+        else
+            logStopButton.setText("Start Log");
         this.logging = logging;
         // Closing the writer when hitting the switch
-    }
-
-    @Override
-    public boolean onTouchEvent(MotionEvent ev)
-    {
-
-        return true;
     }
 }
