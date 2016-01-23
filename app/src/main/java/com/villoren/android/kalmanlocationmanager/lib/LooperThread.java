@@ -24,7 +24,10 @@
 
 package com.villoren.android.kalmanlocationmanager.lib;
 
+import android.Manifest;
+import android.annotation.TargetApi;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -41,7 +44,8 @@ import static com.villoren.android.kalmanlocationmanager.lib.KalmanLocationManag
 /**
  * Created by Rena on 28/09/2014.
  */
-class LooperThread extends Thread {
+class LooperThread extends Thread
+{
 
     // Static constant
     private static final int THREAD_PRIORITY = 5;
@@ -112,21 +116,49 @@ class LooperThread extends Thread {
         start();
     }
 
+    @TargetApi(Build.VERSION_CODES.M)
     @Override
-    public void run() {
+    public void run()
+    {
 
         setPriority(THREAD_PRIORITY);
 
         Looper.prepare();
         mLooper = Looper.myLooper();
 
-        if (mUseProvider == UseProvider.GPS || mUseProvider == UseProvider.GPS_AND_NET) {
+        if (mUseProvider == UseProvider.GPS || mUseProvider == UseProvider.GPS_AND_NET)
+        {
 
+            if (mContext.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                    mContext.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            {
+                // TODO: Consider calling
+                //    Activity#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for Activity#requestPermissions for more details.
+
+
+                // TODO: handle not given permissions, maybe via
+                // mActivity.requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+                // or write own onRequestPermissionsResult
+                //+    public void onRequestPermissionsResult(int requestCode, String[] permissions,^M
+                //+                                           int[] grantResults) {^M
+                //    +        if (requestCode == 1^M
+                //    +                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {^M
+                //    +                Log.d("test", "testtest");^M
+                //    +        }^
+                // but only if needed, probably not
+                return;
+            }
             mLocationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER, mMinTimeGpsProvider, 0.0f, mOwnLocationListener, mLooper);
         }
 
-        if (mUseProvider == UseProvider.NET || mUseProvider == UseProvider.GPS_AND_NET) {
+        if (mUseProvider == UseProvider.NET || mUseProvider == UseProvider.GPS_AND_NET)
+        {
 
             mLocationManager.requestLocationUpdates(
                     LocationManager.NETWORK_PROVIDER, mMinTimeNetProvider, 0.0f, mOwnLocationListener, mLooper);
@@ -135,8 +167,22 @@ class LooperThread extends Thread {
         Looper.loop();
     }
 
-    public void close() {
+    @TargetApi(Build.VERSION_CODES.M)
+    public void close()
+    {
 
+        if (mContext.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                mContext.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+        {
+            // TODO: Consider calling
+            //    Activity#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for Activity#requestPermissions for more details.
+            return;
+        }
         mLocationManager.removeUpdates(mOwnLocationListener);
         mLooper.quit();
     }

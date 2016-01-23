@@ -39,11 +39,17 @@ import android.location.LocationManager;
 import android.location.LocationProvider;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.SystemClock;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
+import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -54,16 +60,25 @@ import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.Circle;
 import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
+import com.opencsv.CSVWriter;
 import com.villoren.android.kalmanlocationmanager.lib.KalmanLocationManager;
 
-import java.util.prefs.Preferences;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Timer;
 
 import static com.villoren.android.kalmanlocationmanager.lib.KalmanLocationManager.UseProvider;
 
 public class MainActivity extends Activity {
 
     private static final String[] INITIAL_PERMS={
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
     };
 
     // Constant
@@ -76,26 +91,33 @@ public class MainActivity extends Activity {
      * Request location updates with the highest possible frequency on gps.
      * Typically, this means one update per second for gps.
      */
-    private static final long GPS_TIME = 1000;
+    private static long GPS_TIME = 1;
 
     /**
      * For the network provider, which gives locations with less accuracy (less reliable),
      * request updates every 5 seconds.
      */
-    private static final long NET_TIME = 5000;
+    private static long NET_TIME = 1;
 
     /**
      * For the filter-time argument we use a "real" value: the predictions are triggered by a timer.
      * Lets say we want 5 updates (estimates) per second = update each 200 millis.
+     *
+     * New: removed final to reduce overshooting by adapting filter_time to other intervalls:
+     * gps and net.
+     * Reason: Sometimes the updates come really seldom
      */
-    private static final long FILTER_TIME = 200;
+    private static long FILTER_TIME = 200;
+    long starttime;
 
+
+    private boolean logging = false;
 
 
     // Context
     private KalmanLocationManager mKalmanLocationManager;
     private SharedPreferences mPreferences;
-    private UseProvider currentProvider;
+    private UseProvider mCurrentProvider;
 
     // UI elements
     private MapView mMapView;
@@ -104,11 +126,24 @@ public class MainActivity extends Activity {
     private TextView tvKal;
     private TextView tvAlt;
     private SeekBar sbZoom;
+    private Button logStopButton;
 
     // Map elements
     private GoogleMap mGoogleMap;
     private Circle mGpsCircle;
     private Circle mNetCircle;
+    private Polyline mGpsPolyLine;
+    private PolylineOptions mGpsPolyLineOptions;
+    private Polyline mNetPolyLine;
+    private PolylineOptions mNetPolyLineOptions;
+    private Polyline mKalmanPolyLine;
+    private PolylineOptions mKalmanPolyLineOptions;
+
+    //CSV writers
+    CSVWriter mKalmanWriter;
+    CSVWriter mNetWriter;
+    CSVWriter mGpsWriter;
+
 
     // Textview animation
     private Animation mGpsAnimation;
@@ -127,7 +162,7 @@ public class MainActivity extends Activity {
         // Context
         mKalmanLocationManager = new KalmanLocationManager(this);
         mPreferences = getPreferences(Context.MODE_PRIVATE);
-        currentProvider = UseProvider.GPS;
+        mCurrentProvider = UseProvider.GPS_AND_NET;
 
         // Init maps
         int result = MapsInitializer.initialize(this);
@@ -147,6 +182,7 @@ public class MainActivity extends Activity {
         tvKal = (TextView) findViewById(R.id.tvKal);
         tvAlt = (TextView) findViewById(R.id.tvAlt);
         sbZoom = (SeekBar) findViewById(R.id.sbZoom);
+        logStopButton = (Button) findViewById(R.id.logButton);
 
         // Initial zoom level
         sbZoom.setProgress(mPreferences.getInt("zoom", 80));
@@ -158,7 +194,7 @@ public class MainActivity extends Activity {
         uiSettings.setCompassEnabled(false);
         uiSettings.setZoomControlsEnabled(false);
         uiSettings.setMyLocationButtonEnabled(false);
-        mGoogleMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
+        mGoogleMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
         mGoogleMap.setLocationSource(mLocationSource);
         mGoogleMap.setMyLocationEnabled(true);
 
@@ -183,6 +219,29 @@ public class MainActivity extends Activity {
 
         mNetCircle = mGoogleMap.addCircle(netCircleOptions);
 
+        mGpsPolyLineOptions = new PolylineOptions()
+                .width(5)
+                .color(Color.RED);
+        mGpsPolyLine = mGoogleMap.addPolyline(mGpsPolyLineOptions);
+
+        mNetPolyLineOptions = new PolylineOptions()
+                .width(5)
+                .color(Color.GREEN);
+        mNetPolyLine = mGoogleMap.addPolyline(mNetPolyLineOptions);
+
+        mKalmanPolyLineOptions = new PolylineOptions()
+                .width(5)
+                .color(Color.BLUE);
+        mKalmanPolyLine = mGoogleMap.addPolyline(mKalmanPolyLineOptions);
+        requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 3);
+
+        // init loggers
+        mGpsWriter = initCSVLogger("KalmanLocationLog/GPSData.csv");
+        mNetWriter = initCSVLogger("KalmanLocationLog/NetData.csv");
+        mKalmanWriter = initCSVLogger("KalmanLocationLog/KalmanData.csv");
+
+        setLogging(true);
+
         // TextView animation
         final float fromAlpha = 1.0f, toAlpha = 0.5f;
 
@@ -201,12 +260,83 @@ public class MainActivity extends Activity {
         mKalAnimation.setFillAfter(true);
         tvKal.startAnimation(mKalAnimation);
 
+        //logging switch
+        logStopButton.setOnClickListener(new View.OnClickListener()
+        {
+            @Override
+            public void onClick(View v)
+            {
+                setLogging(false);
+                if (!logging)
+                {
+                    try
+                    {
+                        mGpsWriter.close();
+                        mNetWriter.close();
+                        mKalmanWriter.close();
+                        Log.d("Main", "Stopped Logging");
+                    } catch (IOException e)
+                    {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        });
+
         // Init altitude textview
         tvAlt.setText(getString(R.string.activity_main_fmt_alt, "-"));
 
         if (!canAccessLocation()) {
             requestPermissions(INITIAL_PERMS, INITIAL_REQUEST);
         }
+    }
+
+    private CSVWriter initCSVLogger(String filename)
+    {
+        // Saving data to .csv
+        String fileName = "KalmanLocationLog/GPSData.csv";
+        File file = null;
+        boolean success = true;
+        if(isExternalStorageWritable())
+        {
+            file = new File(Environment.getExternalStorageDirectory(), filename);
+
+            success = hasPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            if(!file.exists())
+            {
+                success = file.canWrite();
+            }
+            try
+            {
+                File parent = file.getParentFile();
+                success = parent.mkdirs();
+                success = file.createNewFile();
+            } catch (IOException e)
+            {
+                e.printStackTrace();
+            }
+        }
+        FileWriter writer = null;
+        try
+        {
+            writer = new FileWriter(file);
+        } catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+        CSVWriter csWriter = new CSVWriter(writer);
+        String[] header = {"latitude", "longitude", "timestamp"};
+        csWriter.writeNext(header, false);
+        return csWriter;
+    }
+
+    /* Checks if external storage is available for read and write */
+    public boolean isExternalStorageWritable() {
+        String state = Environment.getExternalStorageState();
+        if (Environment.MEDIA_MOUNTED.equals(state)) {
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -236,17 +366,17 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         mMapView.onResume();
-        if(currentProvider == UseProvider.GPS)
+        if(mCurrentProvider == UseProvider.GPS)
         {
             mLocationListener.onProviderEnabled("gps");
             mLocationListener.onProviderDisabled("network");
         }
-        if(currentProvider == UseProvider.NET)
+        if(mCurrentProvider == UseProvider.NET)
         {
             mLocationListener.onProviderDisabled("gps");
             mLocationListener.onProviderEnabled("network");
         }
-        if(currentProvider == UseProvider.GPS_AND_NET)
+        if(mCurrentProvider == UseProvider.GPS_AND_NET)
         {
             mLocationListener.onProviderEnabled("gps");
             mLocationListener.onProviderEnabled("network");
@@ -261,8 +391,10 @@ public class MainActivity extends Activity {
         // For the filtertime argument we use a "real" value: the predictions are triggered by a timer.
         // Lets say we want 5 updates per second = update each 200 millis.
 
+        starttime = System.currentTimeMillis();
+
         mKalmanLocationManager.requestLocationUpdates(
-                currentProvider, FILTER_TIME, GPS_TIME, NET_TIME, mLocationListener, true);
+                mCurrentProvider, FILTER_TIME, GPS_TIME, NET_TIME, mLocationListener, true);
     }
 
     @Override
@@ -285,6 +417,18 @@ public class MainActivity extends Activity {
         @Override
         public void onLocationChanged(Location location) {
 
+            if (location.getProvider().equals(LocationManager.GPS_PROVIDER) ||
+                    location.getProvider().equals(LocationManager.NETWORK_PROVIDER))
+            {
+                long interval = System.currentTimeMillis() - starttime;
+                //if(interval > FILTER_TIME)
+                //{
+                    FILTER_TIME = interval;
+                //}
+                starttime = System.currentTimeMillis();
+            }
+
+
             LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
             // GPS location
@@ -296,6 +440,15 @@ public class MainActivity extends Activity {
 
                 tvGps.clearAnimation();
                 tvGps.startAnimation(mGpsAnimation);
+
+                mGpsPolyLineOptions.add(latLng);
+                mGpsPolyLine = mGoogleMap.addPolyline(mGpsPolyLineOptions);
+
+                //save to file
+                String timeStamp = new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime());
+                String[] data = {String.valueOf(latLng.latitude), String.valueOf(latLng.longitude),
+                        timeStamp};
+                mGpsWriter.writeNext(data, false);
             }
 
             // Network location
@@ -307,11 +460,23 @@ public class MainActivity extends Activity {
 
                 tvNet.clearAnimation();
                 tvNet.startAnimation(mNetAnimation);
+
+                mNetPolyLineOptions.add(latLng);
+                mNetPolyLine = mGoogleMap.addPolyline(mNetPolyLineOptions);
+                String timeStamp = new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime());
+                String[] data = {String.valueOf(latLng.latitude), String.valueOf(latLng.longitude),
+                        timeStamp};
+                mNetWriter.writeNext(data, false);
             }
 
             // If Kalman location and google maps activated the supplied mLocationSource
             if (location.getProvider().equals(KalmanLocationManager.KALMAN_PROVIDER)
                     && mOnLocationChangedListener != null) {
+
+                String timeStamp = new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime());
+                String[] data = {String.valueOf(latLng.latitude), String.valueOf(latLng.longitude),
+                        timeStamp};
+                mKalmanWriter.writeNext(data, false);
 
                 // Update blue "myLocation" dot
                 mOnLocationChangedListener.onLocationChanged(location);
@@ -325,6 +490,8 @@ public class MainActivity extends Activity {
 
                 CameraUpdate update = CameraUpdateFactory.newCameraPosition(position);
                 mGoogleMap.animateCamera(update, (int) FILTER_TIME, null);
+                mKalmanPolyLineOptions.add(latLng);
+                mKalmanPolyLine = mGoogleMap.addPolyline(mKalmanPolyLineOptions);
 
                 // Update altitude
                 String altitude = location.hasAltitude() ? String.format("%.1f", location.getAltitude()) : "-";
@@ -425,11 +592,25 @@ public class MainActivity extends Activity {
     };
 
     private boolean canAccessLocation() {
-        return(hasPermission(Manifest.permission.ACCESS_FINE_LOCATION));
+        return(hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)&&
+                hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION));
     }
 
     @TargetApi(Build.VERSION_CODES.M)
     private boolean hasPermission(String perm) {
         return(PackageManager.PERMISSION_GRANTED==checkSelfPermission(perm));
+    }
+
+    public void setLogging(boolean logging)
+    {
+        this.logging = logging;
+        // Closing the writer when hitting the switch
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent ev)
+    {
+
+        return true;
     }
 }

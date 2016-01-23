@@ -98,5 +98,10 @@ SOFTWARE.
         android:layout_margin="@dimen/activity_main_zoom_margin"
         android:max="90"
     />
+    <Button
+        android:layout_width="78dp"
+        android:layout_height="wrap_content"
+        android:text="Stop Log"
+        android:id="@+id/logButton" android:layout_gravity="center_horizontal|top"/>
 
 </FrameLayout>
