@@ -132,25 +132,6 @@ class LooperThread extends Thread
             if (mContext.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
                     mContext.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
             {
-                // TODO: Consider calling
-                //    Activity#requestPermissions
-                // here to request the missing permissions, and then overriding
-                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                //                                          int[] grantResults)
-                // to handle the case where the user grants the permission. See the documentation
-                // for Activity#requestPermissions for more details.
-
-
-                // TODO: handle not given permissions, maybe via
-                // mActivity.requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
-                // or write own onRequestPermissionsResult
-                //+    public void onRequestPermissionsResult(int requestCode, String[] permissions,^M
-                //+                                           int[] grantResults) {^M
-                //    +        if (requestCode == 1^M
-                //    +                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {^M
-                //    +                Log.d("test", "testtest");^M
-                //    +        }^
-                // but only if needed, probably not
                 return;
             }
             mLocationManager.requestLocationUpdates(
@@ -174,13 +155,6 @@ class LooperThread extends Thread
         if (mContext.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
                 mContext.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
         {
-            // TODO: Consider calling
-            //    Activity#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for Activity#requestPermissions for more details.
             return;
         }
         mLocationManager.removeUpdates(mOwnLocationListener);

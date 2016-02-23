@@ -40,12 +40,10 @@ import android.location.LocationProvider;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
@@ -53,9 +51,16 @@ import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
-import com.google.android.gms.maps.*;
+import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.LocationSource;
+import com.google.android.gms.maps.MapView;
+import com.google.android.gms.maps.MapsInitializer;
+import com.google.android.gms.maps.UiSettings;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.Circle;
 import com.google.android.gms.maps.model.CircleOptions;
@@ -71,8 +76,6 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
-import java.util.Timer;
 
 import static com.villoren.android.kalmanlocationmanager.lib.KalmanLocationManager.UseProvider;
 
@@ -273,16 +276,14 @@ public class MainActivity extends Activity {
                     {
                         e.printStackTrace();
                     }
-                }else if(!logging)
-                {
-                    initAllLoggers();
-                    initLines();
-                    Toast.makeText(
-                            MainActivity.this,
-                            "Started logging",
-                            Toast.LENGTH_SHORT)
-                            .show();
                 }
+                initAllLoggers();
+                initLines();
+                Toast.makeText(
+                        MainActivity.this,
+                        "Started logging",
+                        Toast.LENGTH_SHORT)
+                        .show();
             }
         });
 
@@ -353,19 +354,14 @@ public class MainActivity extends Activity {
         {
             file = new File(Environment.getExternalStorageDirectory(), filename);
 
-            success = hasPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-            if(!file.exists())
-            {
-                success = file.canWrite();
-            }
-            try
-            {
-                File parent = file.getParentFile();
-                success = parent.mkdirs();
-                success = file.createNewFile();
-            } catch (IOException e)
-            {
-                e.printStackTrace();
+            if(hasPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                try {
+                    File parent = file.getParentFile();
+                    parent.mkdirs();
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
         FileWriter writer = null;
@@ -490,13 +486,8 @@ public class MainActivity extends Activity {
                     location.getProvider().equals(LocationManager.NETWORK_PROVIDER))
             {
                 long interval = System.currentTimeMillis() - starttime;
-                //if(interval > FILTER_TIME)
-                //{
-                //    FILTER_TIME = interval;
-                //}
                 starttime = System.currentTimeMillis();
             }
-
 
             LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
